@@ -55,10 +55,26 @@ python hanalife_download.py --status off     :: 판매중지상품만
 python hanalife_download.py --headed         :: 브라우저 창을 보면서 실행
 python hanalife_download.py --out "D:\다른폴더"  :: 저장 위치 변경
 ```
-회사 PC에서 `playwright install`이 막혀 있으면, 설치된 크롬을 지정해서 실행합니다:
+`playwright install`이 회사망 등에서 막혀도 괜찮습니다. 프로그램이 **설치된 크롬, 그다음 엣지를 자동으로 찾아** 실행합니다.
+자동으로 찾지 못하면 경로를 직접 지정합니다:
 ```bat
 python hanalife_download.py --chrome "C:\Program Files\Google\Chrome\Application\chrome.exe"
+python hanalife_download.py --chrome "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
 ```
+
+### 다른 PC(교육장 등)에서 다시 실행하는 순서
+1. 크롬에서 ZIP 받기 → 압축 풀기
+   https://github.com/lwhdngus-design/261014/archive/refs/heads/claude/hanalife-product-docs-download-089p7m.zip
+2. 압축 푼 폴더 안의 `261013\hanalife_docs` 폴더를 열고, 탐색기 주소창에 `cmd` 입력 후 엔터
+3. 명령창에 아래를 차례로 입력
+   ```bat
+   python -m pip install -r requirements.txt
+   python hanalife_download.py --limit 3
+   python hanalife_download.py
+   ```
+   첫 줄은 설치, 둘째 줄은 테스트, 셋째 줄은 전체 다운로드입니다.
+   - 교육장 PC는 사용자 폴더 이름이 다를 수 있습니다. 그럴 때는 저장 위치를 지정합니다: `python hanalife_download.py --out "C:\Users\<사용자명>\Desktop\상품기초서류폴더"`
+   - `python`이 안 되면 `py`로 바꿔서 입력합니다
 
 ## 4. 결과 확인
 - 진행 상황은 화면에 `OK` / `NG`로 표시되고, 끝나면 성공·건너뜀·실패·서류없음 건수를 보여줍니다
