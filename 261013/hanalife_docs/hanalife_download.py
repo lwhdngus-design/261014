@@ -210,6 +210,24 @@ def go_next_page(page, current):
     return page.locator("table").first.inner_text() != before
 
 
+def launch_browser(pw, args):
+    """Playwright 전용 브라우저 → PC에 설치된 크롬 → 엣지 순서로 실행을 시도."""
+    headless = not args.headed
+    if args.chrome:
+        return pw.chromium.launch(headless=headless, executable_path=args.chrome)
+    errors = []
+    for label, opts in [("Playwright 브라우저", {}), ("설치된 크롬", {"channel": "chrome"}),
+                        ("설치된 엣지", {"channel": "msedge"})]:
+        try:
+            browser = pw.chromium.launch(headless=headless, **opts)
+            print(f"브라우저: {label}")
+            return browser
+        except Exception as e:  # noqa: BLE001
+            errors.append(f"{label}: {str(e).splitlines()[0]}")
+    raise SystemExit("브라우저를 실행하지 못했습니다.\n  " + "\n  ".join(errors)
+                     + "\n--chrome \"크롬 또는 엣지 exe 경로\" 옵션으로 직접 지정해 보세요.")
+
+
 def done_keys(log_path):
     keys = set()
     if log_path.exists():
@@ -244,7 +262,7 @@ def main():
     stats = {"성공": 0, "건너뜀": 0, "실패": 0, "서류없음": 0}
 
     with sync_playwright() as pw:
-        browser = pw.chromium.launch(headless=not args.headed, executable_path=args.chrome)
+        browser = launch_browser(pw, args)
         ctx = browser.new_context(accept_downloads=True, locale="ko-KR")
         page = ctx.new_page()
         dlr = Downloader(page, ctx, log)
