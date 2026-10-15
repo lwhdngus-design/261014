@@ -7,7 +7,7 @@
     판매중지상품 : https://www.hanalife.co.kr/anm/product/allProduct.do?status=off
 - 서류: 상품요약서 / 사업방법서 / 보험약관 (판매중지상품은 상품요약서 열이 있을 때만)
 - 저장 구조
-    <저장폴더>/<판매시작연도>/<판매시작일 YYYY.MM.DD>/<상품명>/[서류종류] 원본파일명
+    <저장폴더>/<판매중|판매중지>/<판매시작연도>/<판매시작일 YYYY.MM.DD>/<상품명>/[서류종류] 원본파일명
 - 이미 받은 파일은 건너뜀(재실행 시 이어받기), 결과는 download_log.csv 에 기록
 
 실행:
@@ -32,6 +32,7 @@ from playwright.sync_api import sync_playwright
 BASE_URL = "https://www.hanalife.co.kr/anm/product/allProduct.do?status={status}"
 DEFAULT_OUT = r"C:\Users\93066\Desktop\AI심화교육_261013\상품기초서류폴더"
 STATUS_NAME = {"on": "판매상품", "off": "판매중지상품"}
+STATUS_FOLDER = {"on": "판매중", "off": "판매중지"}
 DOC_COLUMNS = ["상품요약서", "사업방법서", "보험약관"]
 
 # 테이블의 rowspan/colspan 을 풀어 행 단위 데이터로 만들고,
@@ -229,12 +230,12 @@ def launch_browser(pw, args):
 
 
 def done_keys(log_path):
-    keys = set()
+    keys = {}
     if log_path.exists():
         with open(log_path, encoding="utf-8-sig") as f:
             for r in csv.DictReader(f):
                 if r["결과"] == "성공" and r["저장경로"] and Path(r["저장경로"]).exists():
-                    keys.add((r["판매상태"], r["상품명"], r["판매기간"], r["서류"]))
+                    keys[(r["판매상태"], r["상품명"], r["판매기간"], r["서류"])] = Path(r["저장경로"])
     return keys
 
 
@@ -288,7 +289,7 @@ def main():
                     if not name:
                         continue
                     year, start, _ = parse_period(period)
-                    dest = out / year / start / safe(name)
+                    dest = out / STATUS_FOLDER[status] / year / start / safe(name)
 
                     for doc in DOC_COLUMNS:
                         col = find_col(row, "약관" if doc == "보험약관" else doc)
@@ -301,7 +302,7 @@ def main():
                             stats["서류없음"] += 1
                             log.writerow([now, sname, target, category, name, period, doc, "서류없음", "", ""])
                             continue
-                        if key in skip:
+                        if key in skip and skip[key].parent == dest:  # 예전 폴더 구조로 받은 건은 새 구조로 다시 받음
                             stats["건너뜀"] += 1
                             continue
                         try:
