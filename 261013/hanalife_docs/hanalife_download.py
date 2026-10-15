@@ -21,6 +21,7 @@
 import argparse
 import csv
 import re
+import shutil
 import time
 from datetime import datetime
 from pathlib import Path
@@ -230,13 +231,38 @@ def launch_browser(pw, args):
 
 
 def done_keys(log_path):
+    """이미 받은 서류: (상품명, 판매시작일, 서류) → 저장 경로.
+    판매상태·판매기간 글자는 키에 넣지 않음 — 판매중이던 상품이 판매중지로 바뀌면 판매기간에 종료일이 붙고
+    목록도 바뀌지만, 같은 서류이므로 다시 받지 않고 폴더만 옮기기 위함."""
     keys = {}
     if log_path.exists():
         with open(log_path, encoding="utf-8-sig") as f:
             for r in csv.DictReader(f):
-                if r["결과"] == "성공" and r["저장경로"] and Path(r["저장경로"]).exists():
-                    keys[(r["판매상태"], r["상품명"], r["판매기간"], r["서류"])] = Path(r["저장경로"])
+                if r["결과"] in ("성공", "이동") and r["저장경로"] and Path(r["저장경로"]).exists():
+                    keys[(r["상품명"], parse_period(r["판매기간"])[1], r["서류"])] = Path(r["저장경로"])
     return keys
+
+
+def rel(path, base):
+    try:
+        return path.relative_to(base)
+    except ValueError:
+        return path
+
+
+def move_doc(src, dest_dir, stop_at):
+    """받아 둔 서류를 새 폴더로 옮기고, 비게 된 예전 폴더(상품명·판매일자·연도)는 지움."""
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    target = unique_path(dest_dir / src.name)
+    shutil.move(str(src), str(target))
+    d = src.parent
+    while d != stop_at and stop_at in d.parents:
+        try:
+            d.rmdir()  # 비어 있을 때만 지워짐
+        except OSError:
+            break
+        d = d.parent
+    return target
 
 
 def main():
@@ -260,7 +286,7 @@ def main():
         log.writerow(["시각", "판매상태", "대상", "분류", "상품명", "판매기간", "서류", "결과", "저장경로", "비고"])
 
     statuses = ["on", "off"] if args.status == "all" else [args.status]
-    stats = {"성공": 0, "건너뜀": 0, "실패": 0, "서류없음": 0}
+    stats = {"성공": 0, "건너뜀": 0, "이동": 0, "실패": 0, "서류없음": 0}
 
     with sync_playwright() as pw:
         browser = launch_browser(pw, args)
@@ -292,24 +318,36 @@ def main():
                     dest = out / STATUS_FOLDER[status] / year / start / safe(name)
 
                     for doc in DOC_COLUMNS:
+                        key = (name, start, doc)
+                        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        if key in skip:
+                            old = skip[key]
+                            if old.parent == dest:  # 이미 받음
+                                stats["건너뜀"] += 1
+                                continue
+                            # 판매중 → 판매중지로 바뀌었거나 예전 폴더 구조로 받은 서류: 다시 받지 않고 옮기기만 함
+                            # (판매중지 목록에 상품요약서 열이 없어도 받아 둔 상품요약서는 같이 옮김)
+                            path = move_doc(old, dest, out)
+                            skip[key] = path
+                            stats["이동"] += 1
+                            print(f"    MV  {start} {name} [{doc}] {rel(old.parent, out)} -> {rel(dest, out)}")
+                            log.writerow([now, sname, target, category, name, period, doc, "이동", str(path), f"이전 위치: {old}"])
+                            logf.flush()
+                            continue
                         col = find_col(row, "약관" if doc == "보험약관" else doc)
                         if col is None:
                             continue  # 판매중지상품은 상품요약서 열이 없음
-                        key = (sname, name, period, doc)
-                        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                         dl_id = row[col]["dl"]
                         if not dl_id:
                             stats["서류없음"] += 1
                             log.writerow([now, sname, target, category, name, period, doc, "서류없음", "", ""])
-                            continue
-                        if key in skip and skip[key].parent == dest:  # 예전 폴더 구조로 받은 건은 새 구조로 다시 받음
-                            stats["건너뜀"] += 1
                             continue
                         try:
                             path, note = dlr.fetch(page.locator(f"[data-ccdl='{dl_id}']"), dest, doc)
                         except Exception as e:  # noqa: BLE001
                             path, note = None, f"오류: {e}"
                         if path:
+                            skip[key] = path
                             stats["성공"] += 1
                             print(f"    OK  {start} {name} [{doc}] -> {path.name}")
                             log.writerow([now, sname, target, category, name, period, doc, "성공", str(path), note])
@@ -326,7 +364,7 @@ def main():
 
         browser.close()
     logf.close()
-    print(f"\n완료: 성공 {stats['성공']} / 건너뜀 {stats['건너뜀']} / 실패 {stats['실패']} / 서류없음 {stats['서류없음']}")
+    print(f"\n완료: 성공 {stats['성공']} / 건너뜀 {stats['건너뜀']} / 이동 {stats['이동']} / 실패 {stats['실패']} / 서류없음 {stats['서류없음']}")
     print(f"저장 위치: {out}\n로그: {log_path}")
 
 
