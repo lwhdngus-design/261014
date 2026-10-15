@@ -30,7 +30,7 @@ from playwright.sync_api import TimeoutError as PWTimeout
 from playwright.sync_api import sync_playwright
 
 BASE_URL = "https://www.hanalife.co.kr/anm/product/allProduct.do?status={status}"
-DEFAULT_OUT = r"C:\Users\93066\Desktop\AI심화교육_261013\상품기초서류폴더"
+DEFAULT_OUT = r"C:\Users\93066\Desktop\AI_261013\product base documents"
 STATUS_NAME = {"on": "판매상품", "off": "판매중지상품"}
 STATUS_FOLDER = {"on": "판매중", "off": "판매중지"}
 DOC_COLUMNS = ["상품요약서", "사업방법서", "보험약관"]
